@@ -10,7 +10,7 @@ const app = express();
 const port = 3000;
 
 // Connect to MongoDB
-mongoose.connect('mongodb://localhost:27017/antigravity')
+mongoose.connect('mongodb://localhost:27017/roomverse')
   .then(() => console.log('MongoDB Connected'))
   .catch(err => console.log('MongoDB Connection Error:', err));
 
@@ -23,8 +23,8 @@ app.use('/api/auth', authRoutes);
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = 'uploads/';
-    if (!fs.existsSync(uploadDir)){
-        fs.mkdirSync(uploadDir);
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir);
     }
     cb(null, uploadDir);
   },
@@ -41,14 +41,14 @@ const { exec } = require('child_process');
 const processImagesTo3D = (files) => {
   return new Promise((resolve, reject) => {
     console.log(`Processing ${files.length} images...`);
-    
+
     const modelId = Date.now();
     const modelName = `room_${modelId}.obj`;
     const outputPath = path.join(__dirname, 'models', modelName);
-    
+
     // Ensure models directory exists
-    if (!fs.existsSync('models')){
-        fs.mkdirSync('models');
+    if (!fs.existsSync('models')) {
+      fs.mkdirSync('models');
     }
 
     // Call Python script to generate the model
@@ -57,15 +57,15 @@ const processImagesTo3D = (files) => {
         console.error(`exec error: ${error}`);
         // Fallback to static mock if python fails
         resolve({
-            modelUrl: `http://localhost:${port}/models/mock_room.obj`,
-            anchors: []
+          modelUrl: `http://localhost:${port}/models/mock_room.obj`,
+          anchors: []
         });
         return;
       }
-      
+
       console.log(`Python Output: ${stdout}`);
       console.log(`Processing complete. Generated model: ${modelName}`);
-      
+
       resolve({
         modelUrl: `http://localhost:${port}/models/${modelName}`,
         anchors: [

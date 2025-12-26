@@ -4,6 +4,7 @@ import { Float, Stars, Text3D, Center } from '@react-three/drei';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import * as THREE from 'three';
+import { Button } from "@/components/ui/button";
 
 function FloatingShapes() {
   const meshRef = useRef();
