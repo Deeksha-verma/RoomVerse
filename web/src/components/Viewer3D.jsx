@@ -1,30 +1,32 @@
 import React, { Suspense, useState } from 'react';
 import { Canvas, useLoader } from '@react-three/fiber';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader';
-import { OrbitControls, Grid, Stage, Html } from '@react-three/drei';
+import { OrbitControls, Grid, Stage, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Maximize2, MousePointer2, Info, AlertTriangle, Loader2 } from 'lucide-react';
+import { ErrorBoundary } from 'react-error-boundary';
 
 function Model({ url, onObjectClick }) {
   const obj = useLoader(OBJLoader, url);
-  
-  // Traverse to enable raycasting on all meshes
+
   obj.traverse((child) => {
     if (child.isMesh) {
       child.castShadow = true;
       child.receiveShadow = true;
-      // Ensure material is cloned so we can highlight individual parts
       if (!child.userData.originalMaterial) {
-         child.userData.originalMaterial = child.material.clone();
+        child.userData.originalMaterial = child.material.clone();
       }
     }
   });
 
   return (
-    <primitive 
-      object={obj} 
+    <primitive
+      object={obj}
       onClick={(e) => {
         e.stopPropagation();
-        // Find the actual mesh that was clicked
         const mesh = e.object;
         if (mesh && onObjectClick) {
           onObjectClick(mesh);
@@ -34,39 +36,123 @@ function Model({ url, onObjectClick }) {
   );
 }
 
+function ModelLoadingFallback() {
+  return (
+    <mesh position={[0, 0, 0]}>
+      <boxGeometry args={[0.5, 0.5, 0.5]} />
+      <meshStandardMaterial color="#3b82f6" wireframe />
+    </mesh>
+  );
+}
+
+function ErrorFallback({ error }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full w-full text-center p-8 bg-black/80">
+      <div className="rounded-full bg-red-500/10 p-6 mb-6">
+        <AlertTriangle className="w-12 h-12 text-red-400" />
+      </div>
+      <h2 className="text-2xl font-bold text-red-400 mb-2">Failed to Load 3D Model</h2>
+      <p className="text-muted-foreground max-w-md text-sm">
+        The model could not be loaded. This might happen if the scan is still processing or if the file no longer exists.
+      </p>
+      <p className="text-xs text-red-400/60 mt-4 font-mono">{error?.message}</p>
+    </div>
+  );
+}
+
 export default function Viewer3D({ modelUrl }) {
   const [selectedObject, setSelectedObject] = useState(null);
 
   const handleObjectClick = (mesh) => {
-    // Reset previous selection if exists
-    // Note: In a real app we might want to keep a reference to all meshes to reset them properly
-    // For now, we just update the UI state. 
-    // To visually highlight, we can swap materials.
-    
     setSelectedObject(mesh.name);
     console.log("Clicked:", mesh.name);
   };
 
+  // Guard for invalid URLs
+  if (!modelUrl || modelUrl === '#') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full w-full text-center p-8 bg-black/80">
+        <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
+        <p className="text-muted-foreground">Model is still processing or unavailable.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="viewer-container">
-      <Canvas shadows camera={{ position: [5, 5, 5], fov: 50 }}>
-        <Suspense fallback={null}>
-          <Stage environment="city" intensity={0.6}>
-            <Model url={modelUrl} onObjectClick={handleObjectClick} />
-          </Stage>
-        </Suspense>
-        <OrbitControls makeDefault />
-        <Grid infiniteGrid fadeDistance={50} fadeStrength={5} />
-      </Canvas>
-      
-      <div className="viewer-overlay glass-panel">
-        <h3>3D Room View</h3>
-        <p>Click on objects to identify them</p>
-        {selectedObject && (
-          <div style={{ marginTop: '10px', padding: '5px', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '4px' }}>
-            <strong>Selected:</strong> {selectedObject}
+    <div className="relative w-full h-full bg-black/60">
+      <ErrorBoundary FallbackComponent={ErrorFallback}>
+        <Canvas shadows>
+          <PerspectiveCamera makeDefault position={[5, 5, 5]} fov={50} />
+          <Suspense fallback={<ModelLoadingFallback />}>
+            <Stage environment="city" intensity={0.5} contactShadow={{ opacity: 0.4, blur: 2 }}>
+              <Model url={modelUrl} onObjectClick={handleObjectClick} />
+            </Stage>
+          </Suspense>
+          <OrbitControls makeDefault autoRotate autoRotateSpeed={0.5} enableDamping dampingFactor={0.05} />
+          <Grid
+            infiniteGrid
+            fadeDistance={30}
+            fadeStrength={1}
+            cellColor="#3b82f6"
+            sectionColor="#60a5fa"
+            sectionThickness={1.5}
+          />
+        </Canvas>
+      </ErrorBoundary>
+
+      {/* Floating Controls Overlay */}
+      <div className="absolute top-6 left-6 flex flex-col gap-3">
+        <Badge className="bg-primary/20 text-primary border-primary/50 backdrop-blur-md px-3 py-1 text-sm font-medium">
+          INTERACTIVE SESSION
+        </Badge>
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="flex items-center gap-3 bg-black/40 backdrop-blur-lg border border-white/10 rounded-2xl p-4 shadow-xl"
+        >
+          <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-primary">
+            <Info size={20} />
           </div>
+          <div>
+            <h4 className="text-sm font-bold">Room Model v1</h4>
+            <p className="text-[10px] text-muted-foreground uppercase">Autogenerated by KIRI Engine</p>
+          </div>
+        </motion.div>
+      </div>
+
+      <div className="absolute top-6 right-6 flex flex-col gap-2">
+        <button className="w-10 h-10 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors">
+          <Maximize2 size={18} />
+        </button>
+        <button className="w-10 h-10 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors">
+          <MousePointer2 size={18} />
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {selectedObject && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="absolute bottom-6 left-6 right-6 p-6 bg-black/60 backdrop-blur-xl border border-primary/30 rounded-3xl shadow-2xl flex items-center justify-between"
+          >
+            <div>
+              <p className="text-[10px] text-primary font-bold uppercase tracking-widest mb-1">Object Identified</p>
+              <h3 className="text-xl font-bold">{selectedObject.replace(/_/g, ' ')}</h3>
+            </div>
+            <div className="flex gap-3">
+              <Button size="sm" variant="secondary" className="rounded-full">Add Dimension</Button>
+              <Button size="sm" variant="default" className="rounded-full" onClick={() => setSelectedObject(null)}>Dismiss</Button>
+            </div>
+          </motion.div>
         )}
+      </AnimatePresence>
+
+      <div className="absolute bottom-6 right-8 text-[10px] font-mono text-white/30 tracking-tighter uppercase whitespace-pre">
+        LAT: 40.7128° N{"\n"}
+        LON: 74.0060° W{"\n"}
+        ALT: 12.4M
       </div>
     </div>
   );
