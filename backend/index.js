@@ -1,7 +1,8 @@
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
-const path = require('path');
+const dotenv = require('dotenv');
+dotenv.config();
 const fs = require('fs');
 const mongoose = require('mongoose');
 const authRoutes = require('./routes/auth');
@@ -9,8 +10,11 @@ const authRoutes = require('./routes/auth');
 const app = express();
 const port = 3000;
 
+console.log("MongoDB URI: ", process.env.MONGO_URI);
+
+
 // Connect to MongoDB
-mongoose.connect('mongodb://localhost:27017/roomverse')
+mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB Connected'))
   .catch(err => console.log('MongoDB Connection Error:', err));
 
@@ -33,65 +37,44 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB per file
+    files: 300
+  }
+});
 
-const { exec } = require('child_process');
+const reconstructionService = require('./services/reconstructionService');
 
-// Mock 3D Processing Service (Simulated with Python script)
-const processImagesTo3D = (files) => {
-  return new Promise((resolve, reject) => {
-    console.log(`Processing ${files.length} images...`);
-
-    const modelId = Date.now();
-    const modelName = `room_${modelId}.obj`;
-    const outputPath = path.join(__dirname, 'models', modelName);
-
-    // Ensure models directory exists
-    if (!fs.existsSync('models')) {
-      fs.mkdirSync('models');
-    }
-
-    // Call Python script to generate the model
-    exec(`python3 process_images.py "${outputPath}"`, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`exec error: ${error}`);
-        // Fallback to static mock if python fails
-        resolve({
-          modelUrl: `http://localhost:${port}/models/mock_room.obj`,
-          anchors: []
-        });
-        return;
-      }
-
-      console.log(`Python Output: ${stdout}`);
-      console.log(`Processing complete. Generated model: ${modelName}`);
-
-      resolve({
-        modelUrl: `http://localhost:${port}/models/${modelName}`,
-        anchors: [
-          { id: 'corner_1', position: { x: -5, y: 0, z: -5 }, label: 'North-West' },
-          { id: 'corner_2', position: { x: 5, y: 0, z: -5 }, label: 'North-East' },
-          { id: 'corner_3', position: { x: 5, y: 0, z: 5 }, label: 'South-East' },
-          { id: 'corner_4', position: { x: -5, y: 0, z: 5 }, label: 'South-West' },
-        ]
-      });
-    });
-  });
-};
-
-app.post('/upload', upload.array('photos', 10), async (req, res) => {
+app.post('/upload', upload.array('photos', 300), async (req, res) => {
   if (!req.files || req.files.length === 0) {
     return res.status(400).send('No files uploaded.');
   }
 
   try {
-    const result = await processImagesTo3D(req.files);
+    // 1. Kick off the reconstruction process on KIRI
+    const jobInfo = await reconstructionService.startReconstruction(req.files);
+
+    // 2. Return the jobId so the frontend can poll for progress
     res.json({
-      message: 'Images uploaded and processed successfully',
-      data: result
+      message: 'Images uploaded to KIRI, processing started',
+      jobId: jobInfo.jobId
     });
+
   } catch (error) {
+    console.error('Processing failed:', error);
     res.status(500).send('Processing failed');
+  }
+});
+
+app.get('/upload/status/:id', async (req, res) => {
+  try {
+    const result = await reconstructionService.checkStatus(req.params.id);
+    res.json(result);
+  } catch (error) {
+    console.error('Status check failed:', error);
+    res.status(500).send('Status check failed');
   }
 });
 
